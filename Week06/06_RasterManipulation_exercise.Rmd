@@ -49,23 +49,23 @@ Raster data can be very big depending on the extent and resolution (grid size). 
 
 ```{r access-raster, echo=TRUE, eval=FALSE}
 # Library
-___(raster)
+library(raster)
+library(rgdal)
 
 # Read in the elevation layer
-elevation <- ___("data/Aster.tif")
+elevation <- raster("data/Aster.tif")
 
 # Check if the data is in memory
-___(___)
+inMemory(elevation) # returns FALSE
 
 # Use head() to peak at the first few records
-___(___)
+head(elevation)
 
 # Use getValues() to read the values into a vector
-vals <- ___(elevation)
+vals <- getValues(elevation)
 
 # Use hist() to create a histogram of the values
-___(vals)
-
+hist(vals)
 ```
 
 
@@ -89,17 +89,16 @@ In the `elevation` raster you've worked with the values are meters above sea lev
 
 ```{r reclass, eval=FALSE}
 # Plot the elevation layer to see the legend values
-___(elevation)
+plot(elevation)
 
 # Set up the matrix
-vals <- ___
+vals <- cbind(-10000, 0, NA)
 
 # Reclassify 
-elevation_reclass <- ___(elevation, ___ = ___)
+elevation_reclass <- reclassify(elevation, rcl = vals)
 
 # Plot again and confirm that the legend range is 0 - 2400
-___(elevation_reclass)
-
+plot(elevation_reclass)
 ```
 
 Good work! Knowing how to reclassify rasters will come in handy. When you get a chance you should review the help for `reclassify()` particularly the part that discusses how to specify the `rcl` argument. The three-column approach from this exercise is most common but there are other approaches.
@@ -121,25 +120,49 @@ On some OSs, `raster` package does not support `sf` objects. This should not hap
 * Crop the `elevation` layer by the `mounds` object using the `crop()` function and create a smaller `elev` object
 * Plot the `elev` and `mounds` and the `mounds_bb` together.
 ```{r  mounds-crop, eval = FALSE}
-# YOUR CODE
+library(sf)
+
+mounds <- st_read("data/KAZ_mounds.shp")
+# verify that the CRS match
+st_crs(mounds) == st_crs(elevation)
+
+# Create a boundnig box mounds_bb around the mounds with st_make_grid()
+mounds_bb <- st_make_grid(mounds)
+
+# plotting
+plot(mounds_bb)
+plot(mounds, add = TRUE)
+
+# crop the elevation layer by the mounds object
+elev <- crop(elevation, mounds)
+
+# plotting
+plot(elev)
+plot(mounds, add = TRUE)
+plot(mounds_bb, add = TRUE)
 ```
 
 ## Instructions II - Filter largest survey polygons
 
 * Create `survey` object from a shapefile called "KAZ_units.shp"
 * Project the `survey` object to match the new `elev` raster with `st_transform()`if needed. 
-* Compute the area of the survey with `st_area()` and save this object as `areas`. What units are these?
+* Compute the area of the survey with `st_area()` and save this object as `areas`. What units are these? m2.
 * Filter the survey units to only those above 30 ha with the `filter()` function. You will need to wrap `areas` in `unclass()`. Save as `survey_big`. Remember to have the tidyverse or dplyr library attached for `filter()` to work properly. Also `sf` might interfere so specify the `dplyr::filter()` if needed.
 
 ```{r filter-area, eval=FALSE, echo=TRUE}
 # Read in the survey object
-survey <- ___(___)
+survey <- st_read("data/KAZ_units.shp")
+# Check that the CRS match
+st_crs(survey) == st_crs(elev)
 
 # Compute the area of the survey
-areas <- ___(survey)
-
+areas <- st_area(survey)
+# units of areas are m2
+areas
 # Filter to survey with areas > 30000
-survey_big <- ___(survey, ________ > 30000)
+library(dplyr)
+survey_big <- filter(survey, unclass(areas) > 30000)
+
 ```
 
 ## Instructions III - Mask raster by largest polygons
@@ -150,13 +173,13 @@ survey_big <- ___(survey, ________ > 30000)
 * Review the plot of `elevation_mask`. 
 ```{r plot-elevation, eval=FALSE}
 # Plot the elevation raster
-plot(________)
+plot(elev)
 
 # Plot the geometry of survey_big
-plot(_________(survey_big))
+plot(st_geometry(survey_big))
 
 # Mask the elev layer with survey_big and save as elevation_mask
-elevation_mask <- ________(elev, mask = survey_big)
+elevation_mask <- mask(elev, mask = survey_big)
 
 # Plot elevation_mask -- this is a raster!
 plot(elevation_mask)
@@ -186,28 +209,28 @@ The function to reduce resolution in rasters is `aggregate()` which, as you migh
 
 ```{r aggr, eval=FALSE}
 # Load the IKONOS raster
-east <- ________________ 
+east <- raster("data/KazE.tif")
 
 # Plot the IKONOS raster
-___(east)
+plot(east)
 
 # Determine the raster resolution
-___(east)
+res(east) # 10 10
 
 # Determine the number of cells
-___(east)
+ncell(east) # 2,374,596
 
 # Aggregate the raster
-east_small <- ___(east, fact = ___)
+east_small <- aggregate(east, fact = 10)
 
 # Plot the new east layer
-___(east_small)
+plot(east_small)
 
 # Determine the new raster resolution
-___(east_small)
+res(east_small) # 100 100
 
 # Determine the number of cells in the new raster
-___(east_small)
+ncell(east_small) # 23940
 ```
 
 Lovely job! In this example you read in a raster and then converted it to a lower resolution raster to save on the size of the object and ultimately computation power required. In this example, the raster was not too big to begin with so perhaps aggregating would not be necessary but for big rasters such as you will see in remote sensing session (next week), this can be a big help and a necessity.
@@ -224,9 +247,8 @@ Usefully, and you'll see this in a later analysis, you can feed `extract()` a fu
 * Look at the `mounds` elevation column through the `plot()` function as well as histogram. Do the `extract()` results make sense? The `elevation` layer values represent meters above sea level.
 
 ```{r extract, eval=FALSE}
-
 # Extract the elevation values at the mound locations 
-________$elev  <- _______::______(elevation, mounds)
+mounds$elev  <- _______::______(elevation, mounds)
 
 # Look at the mounds and extraction results
 ____(mounds[_______])
@@ -253,26 +275,26 @@ What you will do in this exercise is essentially: identify the most prominent lo
 
 ```{r overlay, eval=FALSE, echo=TRUE}
 # Check in on the elevation and read in prominence layer
-elevation
-prominence <- ___(___)
+aster <- raster("data/Aster.tif")
+prominence <- raster("data/prominence1500m.tif")
 
 # Plot prominence
 plot(prominence)
 
 # Function f with 2 arguments and the raster math to select specific elevation range and prominence values
 f <- function(rast1, rast2) {
-    rast1 > _________ & rast2 ___________
+    rast1 > 400 & rast2 < 650
 }
 
 # Align the extent of the two rasters with crop()
-__________
+elevation <- crop(aster, prominence)
 
 # Do the overlay using the above define f function in the `fun` argument. 
-elevation_prom_overlay <- ___(elevation, ___, fun = ___)
+elevation_prom_overlay <- overlay(elevation, prominence, fun = f)
 
 
 # Plot the result (low elevation and high prominence areas)
-___(elevation_prom_overlay)
+plot(elevation_prom_overlay)
 ```
 
 Congratulations! You've now learned to perform raster math using the raster function `overlay()`. You limited to areas with > 400m & <650m elevation and > 60% prominence, these areas should harbor the most prominent mounds (or defense-ready areas if associated with settlements) in Kazanlak.

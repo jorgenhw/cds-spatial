@@ -50,6 +50,11 @@ In this exercise you will read in three shapefiles (parks, playgrounds, and fore
 
 ```{r load, eval=FALSE, echo=TRUE}
 # Load the sf package
+library(sf)
+
+
+
+
 ___(___)
 
 # Read in the forests shapefile
